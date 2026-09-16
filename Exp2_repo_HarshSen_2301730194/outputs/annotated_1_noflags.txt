@@ -1,0 +1,47 @@
+========================================================================
+CONFIGURATION 1: NO FLAGS
+Command: gcc src/vulnerable.c -o v1_noflags
+========================================================================
+
+--- COMPILER OUTPUT ---
+(empty - zero warnings, zero errors, exit code 0)
+
+--- RUNTIME OUTPUT ---
+================================================================
+ EXPERIMENT 1 - UNSAFE / VULNERABLE DATA TYPE CONVERSIONS
+================================================================
+
+---- [1] int -> short (truncation) ----
+Before (int)         : 70000
+After  (short, cast) : 4464   <-- WRONG, wrapped around
+
+---- [2] signed int -> unsigned int (sign conversion) ----
+Before (int, signed)   : -1
+After  (unsigned int)  : 4294967295   <-- WRONG, became huge positive
+
+---- [3] float -> int (overflow) ----
+Before (float)  : 10000000000.00
+After  (int)    : -2147483648   <-- WRONG / undefined behaviour
+
+---- [4] string -> numeric (atoi, unchecked) ----
+Before (string) : "12abc"
+After  (int)    : 12   <-- silently ignored trailing 'abc'
+
+Before (string) : "hello"
+After  (int)    : 0   <-- WRONG, no error reported, looks valid
+
+Before (string) : "99999999999999999"
+After  (int)    : 1569325055   <-- WRONG, overflowed silently
+
+================================================================
+ All conversions above completed WITHOUT any error checking.
+ Every '<-- WRONG' line is a bug a real program could ship
+ with no compiler error and no runtime crash.
+================================================================
+
+--- ANALYSIS ---
+No diagnostics of any kind, at compile time or run time. All four bugs
+(truncation, sign-conversion, float-cast overflow, unsafe atoi parsing)
+execute silently and produce plausible-looking but wrong numbers. This
+is the default state of an unhardened build and the most dangerous
+configuration: nothing signals that anything went wrong.

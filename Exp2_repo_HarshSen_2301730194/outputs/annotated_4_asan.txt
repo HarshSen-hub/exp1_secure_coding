@@ -1,0 +1,51 @@
+========================================================================
+CONFIGURATION 4: -fsanitize=address (ASan)
+Command: gcc -g -fsanitize=address src/vulnerable.c -o v4_asan
+========================================================================
+
+--- COMPILER OUTPUT ---
+(empty - clean compile)
+
+--- RUNTIME OUTPUT ---
+================================================================
+ EXPERIMENT 1 - UNSAFE / VULNERABLE DATA TYPE CONVERSIONS
+================================================================
+
+---- [1] int -> short (truncation) ----
+Before (int)         : 70000
+After  (short, cast) : 4464   <-- WRONG, wrapped around
+
+---- [2] signed int -> unsigned int (sign conversion) ----
+Before (int, signed)   : -1
+After  (unsigned int)  : 4294967295   <-- WRONG, became huge positive
+
+---- [3] float -> int (overflow) ----
+Before (float)  : 10000000000.00
+After  (int)    : -2147483648   <-- WRONG / undefined behaviour
+
+---- [4] string -> numeric (atoi, unchecked) ----
+Before (string) : "12abc"
+After  (int)    : 12   <-- silently ignored trailing 'abc'
+
+Before (string) : "hello"
+After  (int)    : 0   <-- WRONG, no error reported, looks valid
+
+Before (string) : "99999999999999999"
+After  (int)    : 1569325055   <-- WRONG, overflowed silently
+
+================================================================
+ All conversions above completed WITHOUT any error checking.
+ Every '<-- WRONG' line is a bug a real program could ship
+ with no compiler error and no runtime crash.
+================================================================
+
+--- ANALYSIS ---
+ASan caught nothing, and this is expected: ASan instruments memory
+accesses to detect heap/stack/global buffer overflows, use-after-free,
+use-after-return, and memory leaks. vulnerable.c never allocates a
+buffer or indexes an array - every bug in it is a pure arithmetic/type
+conversion defect with no associated memory access violation. ASan is
+simply the wrong tool for this class of bug; it would light up
+immediately if the program went on to use one of these corrupted
+values as, e.g., a memcpy() length or array index that walked off the
+end of a buffer, but it cannot see the conversion error itself.

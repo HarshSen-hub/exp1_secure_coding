@@ -1,0 +1,28 @@
+========================================================================
+CONFIGURATION 2: -Wall -Wextra
+Command: gcc -Wall -Wextra src/vulnerable.c -o v2_wall
+========================================================================
+
+--- COMPILER OUTPUT ---
+(empty - -Wall -Wextra produced ZERO warnings on this file)
+
+--- RUNTIME OUTPUT ---
+(identical to Configuration 1 - see annotated_1_noflags.txt)
+
+--- WHY NO WARNING WAS PRODUCED (verified separately) ---
+-Wconversion/-Wsign-conversion (not included in -Wall -Wextra) warn only
+about IMPLICIT conversions. Every narrowing/sign-changing conversion in
+vulnerable.c uses an EXPLICIT cast, e.g. (short)big_value or
+(unsigned int)neg_value. An explicit cast tells the compiler "the
+programmer intended this," so the warning is suppressed even when
+-Wconversion is added. Verified with a minimal test file:
+
+  short truncated = big_value;             // IMPLICIT -> warns
+  short truncated = (short)big_value;      // EXPLICIT -> silent
+
+--- ANALYSIS ---
+-Wall -Wextra catch a wide range of mistakes (unused variables, missing
+return values, suspicious comparisons, etc.) but they do NOT catch
+narrowing or sign-changing conversions once the programmer has written
+an explicit cast. A defect deliberately hidden behind a cast is
+completely invisible to this configuration.

@@ -1,0 +1,77 @@
+========================================================================
+CONFIGURATION 3: -fsanitize=undefined (UBSan)
+Command: gcc -g -fsanitize=undefined src/vulnerable.c -o v3_ubsan
+========================================================================
+
+--- COMPILER OUTPUT ---
+(empty - clean compile)
+
+--- RUNTIME OUTPUT ---
+================================================================
+ EXPERIMENT 1 - UNSAFE / VULNERABLE DATA TYPE CONVERSIONS
+================================================================
+
+---- [1] int -> short (truncation) ----
+Before (int)         : 70000
+After  (short, cast) : 4464   <-- WRONG, wrapped around
+
+---- [2] signed int -> unsigned int (sign conversion) ----
+Before (int, signed)   : -1
+After  (unsigned int)  : 4294967295   <-- WRONG, became huge positive
+
+---- [3] float -> int (overflow) ----
+Before (float)  : 10000000000.00
+After  (int)    : -2147483648   <-- WRONG / undefined behaviour
+
+---- [4] string -> numeric (atoi, unchecked) ----
+Before (string) : "12abc"
+After  (int)    : 12   <-- silently ignored trailing 'abc'
+
+Before (string) : "hello"
+After  (int)    : 0   <-- WRONG, no error reported, looks valid
+
+Before (string) : "99999999999999999"
+After  (int)    : 1569325055   <-- WRONG, overflowed silently
+
+================================================================
+ All conversions above completed WITHOUT any error checking.
+ Every '<-- WRONG' line is a bug a real program could ship
+ with no compiler error and no runtime crash.
+================================================================
+
+--- IMPORTANT VERIFIED FINDING ---
+Plain -fsanitize=undefined on this toolchain (GCC 13.3.0, Ubuntu 24.04)
+caught NOTHING in this program - the runtime output is byte-for-byte
+identical to the no-flags build. This was double-checked directly:
+
+  $ gcc -g -fsanitize=float-cast-overflow src/vulnerable.c -o v3b_floatcast
+  $ ./v3b_floatcast
+  src/vulnerable.c:63:9: runtime error: 1e+10 is outside the range of
+  representable values of type 'int'
+
+So the float -> int conversion of 1.0e10f IS genuine undefined behaviour
+(the C standard leaves an out-of-range float-to-int conversion
+undefined) and CAN be caught by a sanitizer check - but on GCC,
+float-cast-overflow is a separate check that is NOT pulled in by the
+"undefined" umbrella group the way it is on Clang. It has to be
+requested explicitly with -fsanitize=float-cast-overflow.
+
+None of the other three bugs (short truncation, signed->unsigned
+conversion, atoi() misparsing) are undefined behaviour at all under the
+C standard - they are well-defined (implementation-defined or fully
+defined) conversions that simply produce a mathematically wrong answer.
+UBSan is designed to catch undefined behaviour, not "well-defined but
+logically wrong" conversions, so by design it has nothing to say about
+them regardless of which UBSan sub-checks are enabled.
+
+--- ANALYSIS ---
+UBSan is powerful for catching a narrow, specific class of defects
+(signed integer overflow, invalid shifts, null-pointer misuse,
+out-of-range float-to-int casts, etc.) but only the sub-checks that are
+actually enabled. On GCC, -fsanitize=undefined is not a complete
+superset of every individual UBSan check; float-cast-overflow in
+particular must be requested explicitly. Even with the right check
+enabled, UBSan still cannot flag conversions that are well-defined by
+the standard but semantically wrong for the program (e.g. -1 becoming
+4294967295), because "well-defined" and "correct" are not the same
+thing.

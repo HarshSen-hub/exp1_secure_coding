@@ -1,0 +1,31 @@
+================================================================
+ EXPERIMENT 1 - UNSAFE / VULNERABLE DATA TYPE CONVERSIONS
+================================================================
+
+---- [1] int -> short (truncation) ----
+Before (int)         : 70000
+After  (short, cast) : 4464   <-- WRONG, wrapped around
+
+---- [2] signed int -> unsigned int (sign conversion) ----
+Before (int, signed)   : -1
+After  (unsigned int)  : 4294967295   <-- WRONG, became huge positive
+
+---- [3] float -> int (overflow) ----
+Before (float)  : 10000000000.00
+After  (int)    : -2147483648   <-- WRONG / undefined behaviour
+
+---- [4] string -> numeric (atoi, unchecked) ----
+Before (string) : "12abc"
+After  (int)    : 12   <-- silently ignored trailing 'abc'
+
+Before (string) : "hello"
+After  (int)    : 0   <-- WRONG, no error reported, looks valid
+
+Before (string) : "99999999999999999"
+After  (int)    : 1569325055   <-- WRONG, overflowed silently
+
+================================================================
+ All conversions above completed WITHOUT any error checking.
+ Every '<-- WRONG' line is a bug a real program could ship
+ with no compiler error and no runtime crash.
+================================================================
